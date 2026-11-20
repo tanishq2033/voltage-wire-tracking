@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voltage Wire Tracking System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..900;1,14..32,300..900&family=JetBrains+Mono:wght@600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ══ TOPBAR ══════════════════════════════════════════════ -->
+<header class="topbar">
+  <div class="topbar-title">
+    <span class="topbar-icon">⚡</span>
+    <h1><em>Voltage</em> Wire Tracking System</h1>
+  </div>
+  <div class="status-row">
+    <button id="statusEsp32"   class="badge status-button badge-off" type="button"><span class="dot"></span><span class="label-text">ESP32: DISCONNECTED</span></button>
+    <button id="statusCamera"  class="badge status-button badge-off" type="button"><span class="dot"></span><span class="label-text">Camera: INACTIVE</span></button>
+    <button id="statusTracking"class="badge status-button badge-off" type="button"><span class="dot"></span><span class="label-text">Tracking: LOST</span></button>
+  </div>
+</header>
+
+<div class="app-layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+
+    <!-- 1 · ESP32 -->
+    <div class="ctrl-section">
+      <div class="ctrl-header">
+        <span class="ctrl-num">1</span>
+        <span class="ctrl-title">ESP32 Connection</span>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="esp32Ip">Device IP</label>
+        <input class="field-input" type="text" id="esp32Ip" placeholder="192.168.1.35">
+      </div>
+
+      <button id="btnConnectEsp32" class="btn btn-connect" style="margin-top:10px;">⚡ Connect to ESP32</button>
+
+      <!-- Voltage gauge -->
+      <div class="gauge-wrap" style="margin-top:14px;">
+        <svg width="120" height="70" viewBox="0 0 120 80">
+          <path class="gauge-bg"  d="M 10 70 A 50 50 0 1 1 110 70" />
+          <path class="gauge-arc" id="gaugeArc" d="M 10 70 A 50 50 0 1 1 110 70" />
+          <text x="60" y="58" text-anchor="middle" font-family="Inter,sans-serif" font-size="18" font-weight="800" fill="#f05a00" id="gaugeTxt">--</text>
+          <text x="60" y="72" text-anchor="middle" font-family="Inter,sans-serif" font-size="8" font-weight="600" fill="#908e88">mV</text>
+        </svg>
+        <span class="gauge-label">Live Voltage</span>
+      </div>
+
+      <!-- Hidden readout for app.js compatibility -->
+      <div class="readout" style="display:none;">
+        <span class="label">Voltage</span><span id="voltageValue">--</span>
+        <span class="label">Status</span><span id="voltageStatus">--</span>
+      </div>
+
+      <p class="hint" style="margin-top:10px;">Find the IP in Arduino Serial Monitor (115200 baud) after uploading.</p>
+    </div>
+
+    <!-- 2 · Camera -->
+    <div class="ctrl-section">
+      <div class="ctrl-header">
+        <span class="ctrl-num">2</span>
+        <span class="ctrl-title">Camera</span>
+      </div>
+
+      <button id="btnStartCamera" class="btn btn-primary btn-full">▶ Start Camera</button>
+
+      <div class="btn-row" style="margin-top:7px;">
+        <button id="btnStopCamera"        class="btn btn-secondary">■ Stop</button>
+        <button id="btnRequestCameraPerm" class="btn btn-ghost">🔒 Permission</button>
+      </div>
+
+      <div class="toggle-row" style="border-top:1px solid var(--border); margin-top:10px; padding-top:10px;">
+        <span class="toggle-label">Manual Marking</span>
+        <label class="toggle-wrap">
+          <input type="checkbox" id="chkManualMarking" checked>
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+
+      <div class="camera-meta">
+        <span id="cameraInfo">Using default camera</span>
+        <span id="cameraError"></span>
+      </div>
+
+      <div id="cameraDebug"></div>
+
+      <div class="btn-row" style="margin-top:10px;">
+        <button id="btnSaveSnapshot" class="btn btn-ghost">📷 Snapshot</button>
+        <label class="filebtn">
+          📁 Upload
+          <input type="file" id="imageUpload" accept="image/*" hidden>
+        </label>
+      </div>
+
+      <p class="hint">Point camera at the wall. The ArUco marker on the ESP32 is tracked automatically.</p>
+    </div>
+
+    <!-- 3 · Calibration -->
+    <div class="ctrl-section">
+      <div class="ctrl-header">
+        <span class="ctrl-num">3</span>
+        <span class="ctrl-title">Wall Calibration</span>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="wallWidth">Wall Width (ft)</label>
+        <input class="field-input" type="number" id="wallWidth" value="10" step="0.1">
+      </div>
+      <div class="field">
+        <label class="field-label" for="wallHeight">Wall Height (ft)</label>
+        <input class="field-input" type="number" id="wallHeight" value="8" step="0.1">
+      </div>
+      <div class="field">
+        <label class="field-label" for="camDistance">Camera Distance (ft)</label>
+        <input class="field-input" type="number" id="camDistance" value="3" step="0.1">
+      </div>
+
+      <button id="btnApplyCalibration" class="btn btn-primary btn-full" style="margin-top:4px;">✓ Apply Calibration</button>
+      <button id="btnWallCorners" class="btn btn-secondary btn-full" style="margin-top:7px;">⌗ Calibrate Wall Corners</button>
+      <p class="hint">After camera is active, click the four wall corners in order: top-left, top-right, bottom-right, bottom-left.</p>
+
+      <div class="field" style="margin-top:12px;">
+        <label class="field-label" for="markerSize">ArUco Marker Size (in)</label>
+        <input class="field-input" type="number" id="markerSize" value="2" step="0.1">
+      </div>
+      <button id="btnAutoCalibrate" class="btn btn-secondary btn-full" style="margin-top:4px;">⟳ Auto Calibrate (ArUco)</button>
+
+      <p class="hint">Assumes camera fully captures the wall. Approximation for v1.</p>
+    </div>
+
+    <!-- 4 · Wire Marking -->
+    <div class="ctrl-section">
+      <div class="ctrl-header">
+        <span class="ctrl-num">4</span>
+        <span class="ctrl-title">Wire Marking <small style="font-size:0.68rem;font-weight:400;opacity:0.5;">manual · v1</small></span>
+      </div>
+
+      <div class="btn-row">
+        <button id="btnMarkWireMode" class="btn btn-primary">✏ Mark Wire Path</button>
+        <button id="btnClearWire"    class="btn btn-ghost">✕ Clear</button>
+      </div>
+
+      <p class="hint">Click "Mark Wire Path", tap points along the wire on the camera feed, click again to stop.</p>
+    </div>
+
+  </aside>
+
+  <!-- ── Main ── -->
+  <div class="main-area">
+
+    <!-- Stats strip -->
+    <div class="stats-strip">
+      <div class="stat-cell">
+        <span class="stat-cell-label">Live Voltage</span>
+        <span class="stat-cell-value accent" id="statVoltage">--</span>
+        <span class="stat-cell-sub">millivolts</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-cell-label">Position X</span>
+        <span class="stat-cell-value" id="statX">--</span>
+        <span class="stat-cell-sub">feet from left</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-cell-label">Position Y</span>
+        <span class="stat-cell-value" id="statY">--</span>
+        <span class="stat-cell-sub">feet from top</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-cell-label">ArUco Marker</span>
+        <span class="stat-cell-value" id="statMarkerId">--</span>
+        <span class="stat-cell-sub" id="statTrackingState">not detected</span>
+      </div>
+    </div>
+
+    <!-- Camera feed -->
+    <div class="camera-section">
+      <div class="camera-toolbar">
+        <span class="camera-toolbar-title">Live Camera Feed</span>
+        <div class="camera-toolbar-actions">
+          <button id="btnRecord" class="btn btn-sm">⏺ Record</button>
+          <button id="btnFullscreen" class="btn btn-sm" title="Fullscreen">⛶ Fullscreen</button>
+        </div>
+      </div>
+      <div class="camera-wrap">
+        <div class="cam-br-tr"></div>
+        <div class="cam-br-bl"></div>
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+
+        <!-- Fullscreen HUD — only visible when fullscreen -->
+        <div class="fs-hud" id="fsHud">
+
+          <!-- Top bar -->
+          <div class="fs-hud-top">
+            <div class="fs-hud-brand">
+              <span class="fs-hud-icon">⚡</span>
+              <span class="fs-hud-title">Voltage Wire Tracking</span>
+            </div>
+            <div class="fs-hud-badges">
+              <span class="fs-badge" id="fsEsp32Badge">● ESP32: OFF</span>
+              <span class="fs-badge" id="fsCamBadge">● Camera: OFF</span>
+              <span class="fs-badge" id="fsTrkBadge">● Tracking: LOST</span>
+            </div>
+            <div class="fs-hud-clock" id="fsHudClock">--:--:--</div>
+          </div>
+
+          <!-- Bottom bar -->
+          <div class="fs-hud-bottom">
+
+            <div class="fs-stat-group">
+              <div class="fs-stat">
+                <span class="fs-stat-label">Voltage</span>
+                <span class="fs-stat-value fs-orange" id="fsVoltage">--</span>
+                <span class="fs-stat-unit">mV</span>
+              </div>
+              <div class="fs-stat">
+                <span class="fs-stat-label">Status</span>
+                <span class="fs-stat-value" id="fsStatus">--</span>
+              </div>
+            </div>
+
+            <div class="fs-divider"></div>
+
+            <div class="fs-stat-group">
+              <div class="fs-stat">
+                <span class="fs-stat-label">Position X</span>
+                <span class="fs-stat-value" id="fsPosX">--</span>
+                <span class="fs-stat-unit">ft</span>
+              </div>
+              <div class="fs-stat">
+                <span class="fs-stat-label">Position Y</span>
+                <span class="fs-stat-value" id="fsPosY">--</span>
+                <span class="fs-stat-unit">ft</span>
+              </div>
+            </div>
+
+            <div class="fs-divider"></div>
+
+            <div class="fs-stat-group">
+              <div class="fs-stat">
+                <span class="fs-stat-label">Marker ID</span>
+                <span class="fs-stat-value" id="fsMarkerId">--</span>
+              </div>
+              <div class="fs-stat">
+                <span class="fs-stat-label">Wall</span>
+                <span class="fs-stat-value" id="fsWall">--</span>
+                <span class="fs-stat-unit">ft²</span>
+              </div>
+            </div>
+
+            <div class="fs-divider"></div>
+
+            <div class="fs-stat-group">
+              <button id="fsExitBtn" class="fs-exit-btn">✕ Exit</button>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Bottom: dashboard + log -->
+    <div class="bottom-panels">
+
+      <div class="dash-section">
+        <div class="dash-section-title">Dashboard</div>
+        <div class="dash-grid">
+          <div class="dash-card">
+            <h3>ESP32</h3>
+            <p id="dashEsp32State">Connected: --</p>
+            <p id="dashVoltage">Voltage: -- V</p>
+            <p id="dashStatus">Status: --</p>
+          </div>
+          <div class="dash-card">
+            <h3>Tracking</h3>
+            <p id="dashTracking">Tracking: LOST</p>
+            <p id="dashX">X: -- ft</p>
+            <p id="dashY">Y: -- ft</p>
+          </div>
+          <div class="dash-card">
+            <h3>Wall</h3>
+            <p id="dashWallWidth">Width: -- ft</p>
+            <p id="dashWallHeight">Height: -- ft</p>
+            <p id="dashCamDist">Cam Distance: -- ft</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="log-section">
+        <div class="log-header">
+          <span class="log-title">Activity Log</span>
+          <button id="btnClearLog" class="log-clear-btn">Clear</button>
+        </div>
+        <div id="activityLog">
+          <div class="log-empty">No events yet — connect ESP32 or start camera.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- Scripts -->
+<script src="lib/cv.js"></script>
+<script src="lib/svd.js"></script>
+<script src="lib/aruco.js"></script>
+<script src="esp32Connection.js?v=1045"></script>
+<script src="camera.js"></script>
+<script src="tracking.js?v=1046"></script>
+<script src="calibration.js?v=1039"></script>
+<script src="anchors.js"></script>
+<script src="app.js?v=1045"></script>
+
+<script>
+// ── Voltage gauge ─────────────────────────────────────────────
+const gaugeArc = document.getElementById('gaugeArc');
+const gaugeTxt = document.getElementById('gaugeTxt');
+const ARC_LEN  = 220;
+
+function setGauge(mv) {
+  const pct = Math.min(1, Math.max(0, mv / 3300));
+  gaugeArc.style.strokeDashoffset = ARC_LEN - pct * ARC_LEN;
+  gaugeTxt.textContent = mv > 0 ? Math.round(mv) : '--';
+  gaugeArc.style.stroke = pct > 0.75 ? '#d63a2a' : pct > 0.4 ? '#ff7a2a' : '#f05a00';
+}
+
+// Watch voltageValue written by app.js
+new MutationObserver(() => {
+  const v  = document.getElementById('voltageValue').textContent.trim();
+  const mv = parseFloat(v);
+  document.getElementById('statVoltage').textContent = isNaN(mv) ? '--' : mv.toFixed(1) + ' mV';
+  setGauge(isNaN(mv) ? 0 : mv);
+}).observe(document.getElementById('voltageValue'), { childList: true, characterData: true, subtree: true });
+
+// ── Sync stats from dashboard ─────────────────────────────────
+setInterval(() => {
+  const dx = document.getElementById('dashX').textContent.match(/([\d.]+)/);
+  const dy = document.getElementById('dashY').textContent.match(/([\d.]+)/);
+  document.getElementById('statX').textContent = dx ? dx[1] + ' ft' : '--';
+  document.getElementById('statY').textContent = dy ? dy[1] + ' ft' : '--';
+  const trk = document.getElementById('statusTracking').classList.contains('badge-on');
+  document.getElementById('statMarkerId').textContent     = trk ? ('ID ' + Tracking.state.markerId) : '--';
+  document.getElementById('statTrackingState').textContent = trk ? 'tracking active' : 'not detected';
+}, 350);
+
+// ── Activity log ──────────────────────────────────────────────
+function addLog(msg, type = 'info') {
+  const log   = document.getElementById('activityLog');
+  const empty = log.querySelector('.log-empty');
+  if (empty) empty.remove();
+  const t  = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  const el = document.createElement('div');
+  el.className = `log-entry log-${type}`;
+  el.innerHTML = `<span class="log-time">${t}</span><span class="log-msg">${msg}</span>`;
+  log.prepend(el);
+  while (log.children.length > 60) log.removeChild(log.lastChild);
+}
+
+document.getElementById('btnClearLog').addEventListener('click', () => {
+  document.getElementById('activityLog').innerHTML = '<div class="log-empty">Log cleared.</div>';
+});
+
+// Badge change → auto log
+function watchBadge(id, onMsg, offMsg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  new MutationObserver(() => {
+    const on = el.classList.contains('badge-on');
+    if ( on && !el._wasOn) { el._wasOn = true;  addLog(onMsg,  'ok');   }
+    if (!on &&  el._wasOn) { el._wasOn = false; addLog(offMsg, 'warn'); }
+  }).observe(el, { attributes: true, attributeFilter: ['class'] });
+}
+watchBadge('statusEsp32',   'ESP32 connected.',          'ESP32 disconnected.');
+watchBadge('statusCamera',  'Camera active.',             'Camera stopped.');
+watchBadge('statusTracking','Marker detected — tracking active.', 'Marker lost.');
+
+// High voltage alert
+new MutationObserver(() => {
+  const s = document.getElementById('voltageStatus').textContent;
+  const el = document.getElementById('voltageStatus');
+  if (s === 'HIGH' && !el._wasHigh) { el._wasHigh = true; addLog('⚠ HIGH voltage detected.', 'err'); }
+  if (s !== 'HIGH') el._wasHigh = false;
+}).observe(document.getElementById('voltageStatus'), { childList: true, characterData: true, subtree: true });
+
+// Button events
+[
+  ['btnConnectEsp32',     () => { const ip = document.getElementById('esp32Ip').value.trim(); addLog(ip ? `Connecting to ${ip}…` : 'Enter an IP first.', ip ? 'info' : 'warn'); }],
+  ['btnStartCamera',      () => addLog('Starting camera…', 'info')],
+  ['btnStopCamera',       () => addLog('Camera stopped.', 'warn')],
+  ['btnApplyCalibration', () => addLog(`Calibration applied — ${document.getElementById('wallWidth').value}×${document.getElementById('wallHeight').value} ft, ${document.getElementById('camDistance').value} ft camera distance.`, 'ok')],
+  ['btnAutoCalibrate',    () => addLog('Auto-calibrating from ArUco marker…', 'info')],
+  ['btnMarkWireMode',     () => addLog(document.getElementById('btnMarkWireMode').classList.contains('active') ? 'Wire marking stopped.' : 'Wire marking started.', 'info')],
+  ['btnClearWire',        () => addLog('Wire path cleared.', 'warn')],
+  ['btnSaveSnapshot',     () => addLog('Snapshot saved.', 'ok')],
+].forEach(([id, fn]) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn, true); });
+
+// ── Fullscreen + HUD ──────────────────────────────────────────
+const btnFs   = document.getElementById('btnFullscreen');
+const camWrap = document.querySelector('.camera-wrap');
+const fsHud   = document.getElementById('fsHud');
+
+btnFs.addEventListener('click', () => {
+  if (!document.fullscreenElement) {
+    camWrap.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen();
+  }
+});
+
+// Exit button inside HUD
+document.getElementById('fsExitBtn').addEventListener('click', () => {
+  document.exitFullscreen();
+});
+
+document.addEventListener('fullscreenchange', () => {
+  const isFs = !!document.fullscreenElement;
+  btnFs.textContent = isFs ? '✕ Exit Fullscreen' : '⛶ Fullscreen';
+  camWrap.style.maxHeight    = isFs ? '100vh' : '';
+  camWrap.style.borderRadius = isFs ? '0' : '';
+  fsHud.style.display = isFs ? 'flex' : 'none';
+});
+
+// ── HUD data sync ─────────────────────────────────────────────
+function syncHud() {
+  // Voltage
+  const v  = document.getElementById('voltageValue').textContent.trim();
+  const mv = parseFloat(v);
+  const fsV = document.getElementById('fsVoltage');
+  if (!isNaN(mv)) {
+    fsV.textContent = mv.toFixed(1);
+    fsV.className = 'fs-stat-value ' + (mv > 2000 ? 'fs-red' : 'fs-orange');
+  } else {
+    fsV.textContent = '--';
+    fsV.className = 'fs-stat-value fs-orange';
+  }
+
+  // Status
+  const s = document.getElementById('voltageStatus').textContent.trim();
+  const fsS = document.getElementById('fsStatus');
+  fsS.textContent = s || '--';
+  fsS.className = 'fs-stat-value ' + (s === 'HIGH' ? 'fs-red' : s === 'LOW' ? 'fs-green' : '');
+
+  // Position
+  const dx = document.getElementById('dashX').textContent.match(/([\d.]+)/);
+  const dy = document.getElementById('dashY').textContent.match(/([\d.]+)/);
+  document.getElementById('fsPosX').textContent = dx ? dx[1] : '--';
+  document.getElementById('fsPosY').textContent = dy ? dy[1] : '--';
+
+  // Marker ID + tracking
+  const trk = document.getElementById('statusTracking').classList.contains('badge-on');
+  document.getElementById('fsMarkerId').textContent = trk ? ('ID ' + Tracking.state.markerId) : '--';
+
+  // Wall dimensions
+  const ww = document.getElementById('dashWallWidth').textContent.match(/([\d.]+)/);
+  const wh = document.getElementById('dashWallHeight').textContent.match(/([\d.]+)/);
+  document.getElementById('fsWall').textContent =
+    (ww && wh) ? (parseFloat(ww[1]) * parseFloat(wh[1])).toFixed(0) : '--';
+
+  // Status badges
+  const mapBadge = (domId, fsId) => {
+    const on = document.getElementById(domId).classList.contains('badge-on');
+    const lbl = document.getElementById(domId).querySelector('.label-text').textContent;
+    const el = document.getElementById(fsId);
+    el.textContent = '● ' + lbl;
+    el.classList.toggle('on', on);
+  };
+  mapBadge('statusEsp32',    'fsEsp32Badge');
+  mapBadge('statusCamera',   'fsCamBadge');
+  mapBadge('statusTracking', 'fsTrkBadge');
+}
+
+setInterval(syncHud, 300);
+
+// ── HUD clock ─────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('fsHudClock').textContent =
+    new Date().toLocaleTimeString('en-GB', { hour12: false });
+}, 1000);
+
+// ── Record ────────────────────────────────────────────────────
+let recOn = false, recSec = 0, recT = null;
+const btnRec = document.getElementById('btnRecord');
+btnRec.addEventListener('click', () => {
+  recOn = !recOn;
+  btnRec.classList.toggle('recording', recOn);
+  if (recOn) {
+    recSec = 0; btnRec.textContent = '⏹ 0s';
+    addLog('Recording started.', 'ok');
+    recT = setInterval(() => { recSec++; btnRec.textContent = `⏹ ${recSec}s`; }, 1000);
+  } else {
+    clearInterval(recT);
+    btnRec.textContent = '⏺ Record';
+    addLog(`Recording stopped — ${recSec}s captured.`, 'warn');
+  }
+});
+</script>
+</body>
+</html>
